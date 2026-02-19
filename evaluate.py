@@ -11,20 +11,21 @@ from tqdm import tqdm
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate CS-LSTM model")
     parser.add_argument('--config', type=str, default='config.yaml', help='Path to config file')
+    # [추가] Inference Time 측정 모드 플래그
+    parser.add_argument('--measure_time', action='store_true', help='Measure inference time (batch_size=1, 200 iters)')
     args = parser.parse_args()
     with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
-    return config
+    return config, args.measure_time
 
 def main():
-    config = parse_args()
+    config, measure_time_mode = parse_args()
     args = config['model_args']
     args['train_flag'] = False 
     paths = config['data_paths']
-    batch_size = config['train_args']['batch_size']
-
+    
     # -----------------------------------------------------------
-    # [추가됨] 실험 모드 설정 및 입력 차원 계산 (train.py와 동일)
+    # 실험 모드 설정 및 입력 차원 계산
     # -----------------------------------------------------------
     ds_args = config.get('dataset_args', {})
     nbr_mode = ds_args.get('nbr_mode', 0) 
@@ -38,35 +39,87 @@ def main():
     current_nbr_dim = mode_dim_map.get(nbr_mode, 2)
     args['nbr_input_dim'] = current_nbr_dim
     
-    print(f"✅ Evaluation Mode: {nbr_mode} | Neighbor Input Dim: {current_nbr_dim}")
-    # -----------------------------------------------------------
-
-    nllLoss = torch.zeros(25)
-    mseLoss = torch.zeros(25)
-    counts = torch.zeros(25)
-
-    # Initialize network (수정된 args가 전달되므로 모델 구조가 정확히 맞춰짐)
-    net = highwayNet(args)
+    print(f"✅ Mode: {nbr_mode} | Neighbor Input Dim: {current_nbr_dim}")
     
+    # Initialize network
+    net = highwayNet(args)
     device = torch.device("cuda" if args['use_cuda'] and torch.cuda.is_available() else "cpu")
     ckpt_path = paths['save_dir'] + "/best.pt"
-    
-    # 학습된 가중치 로드
     net.load_state_dict(torch.load(ckpt_path, map_location=device))
     
     if args['use_cuda']:
         net = net.cuda()
+    net.eval() # 평가 모드 고정
 
-    # [수정됨] nbr_feature_mode 전달
+    # 데이터셋 로드
     tsSet = ngsimDataset(paths['test_set'],
                         t_h=ds_args.get('t_h', 15),
                         t_f=ds_args.get('t_f', 25),
                         d_s=ds_args.get('d_s', 1),
                         enc_size=args['encoder_size'],
                         grid_size=tuple(args['grid_size']),
-                        nbr_feature_mode=nbr_mode) # <-- 이 부분 추가
-                        
+                        nbr_feature_mode=nbr_mode)
+
+    # =====================================================================
+    # [추가] Inference Time 측정 모드
+    # =====================================================================
+    if measure_time_mode:
+        print("\n⏳ Measuring Inference Time (Batch Size = 1)")
+        # batch_size=1 로 강제 설정
+        time_loader = DataLoader(tsSet, batch_size=1, shuffle=True, num_workers=4, collate_fn=tsSet.collate_fn)
+        
+        num_iterations = 200
+        warmup_iterations = 20 # GPU 워밍업 (측정에서 제외)
+        inference_times = []
+        
+        with torch.no_grad():
+            for i, data in enumerate(time_loader):
+                if i >= num_iterations + warmup_iterations:
+                    break
+                    
+                hist, nbrs, mask, lat_enc, lon_enc, fut, op_mask = data
+                if args['use_cuda']:
+                    hist, nbrs, mask, lat_enc, lon_enc = \
+                        hist.cuda(), nbrs.cuda(), mask.cuda(), lat_enc.cuda(), lon_enc.cuda()
+                
+                # 측정 시작 (CUDA 동기화 필수)
+                if args['use_cuda']:
+                    torch.cuda.synchronize()
+                start_time = time.perf_counter()
+                
+                # Forward Pass (추론)
+                if args['use_maneuvers']:
+                    _ = net(hist, nbrs, mask, lat_enc, lon_enc)
+                else:
+                    _ = net(hist, nbrs, mask, lat_enc, lon_enc)
+                
+                # 측정 종료
+                if args['use_cuda']:
+                    torch.cuda.synchronize()
+                end_time = time.perf_counter()
+                
+                if i >= warmup_iterations:
+                    inference_times.append((end_time - start_time) * 1000) # ms 단위 저장
+                    
+        avg_time = sum(inference_times) / len(inference_times)
+        min_time = min(inference_times)
+        max_time = max(inference_times)
+        
+        print(f"✅ Result ({num_iterations} iterations):")
+        print(f"  - Average Inference Time: {avg_time:.2f} ms")
+        print(f"  - Min / Max Time: {min_time:.2f} ms / {max_time:.2f} ms\n")
+        
+        return # 시간 측정 후 종료 (전체 평가는 생략)
+
+    # =====================================================================
+    # 일반 평가 모드 (기존 로직)
+    # =====================================================================
+    batch_size = config['train_args']['batch_size']
     tsDataloader = DataLoader(tsSet, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=tsSet.collate_fn)
+
+    nllLoss = torch.zeros(25)
+    mseLoss = torch.zeros(25)
+    counts = torch.zeros(25)
 
     if args['use_cuda']:
         nllLoss = nllLoss.cuda()
@@ -91,13 +144,11 @@ def main():
                 l_nll, c = maskedNLLTest(fut_pred, lat_pred, lon_pred, fut, op_mask)
                 
                 fut_pred_tensor = torch.stack(fut_pred) 
-
                 lat_man = torch.argmax(lat_pred, dim=1)
                 lon_man = torch.argmax(lon_pred, dim=1)
-                indx = lon_man * 3 + lat_man  # (batch,)
+                indx = lon_man * 3 + lat_man 
 
                 batch_range = torch.arange(fut.shape[1], device=fut.device)
-
                 fut_pred_max = fut_pred_tensor[indx, :, batch_range, :].transpose(0, 1)
             else:
                 fut_pred_max = net(hist, nbrs, mask, lat_enc, lon_enc)
