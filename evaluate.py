@@ -23,28 +23,50 @@ def main():
     paths = config['data_paths']
     batch_size = config['train_args']['batch_size']
 
+    # -----------------------------------------------------------
+    # [추가됨] 실험 모드 설정 및 입력 차원 계산 (train.py와 동일)
+    # -----------------------------------------------------------
+    ds_args = config.get('dataset_args', {})
+    nbr_mode = ds_args.get('nbr_mode', 0) 
+
+    mode_dim_map = {
+        0: 2, # Original (x, y)
+        1: 5, # Exp1 (ax, ay, lc, dxt, gate)
+        2: 7, # Exp2 (x, y, vx, vy, ax, ay, gate)
+        3: 2  # Exp3 (lc, dxt)
+    }
+    current_nbr_dim = mode_dim_map.get(nbr_mode, 2)
+    args['nbr_input_dim'] = current_nbr_dim
+    
+    print(f"✅ Evaluation Mode: {nbr_mode} | Neighbor Input Dim: {current_nbr_dim}")
+    # -----------------------------------------------------------
+
     nllLoss = torch.zeros(25)
     mseLoss = torch.zeros(25)
     counts = torch.zeros(25)
 
-    # Initialize network
+    # Initialize network (수정된 args가 전달되므로 모델 구조가 정확히 맞춰짐)
     net = highwayNet(args)
     
     device = torch.device("cuda" if args['use_cuda'] and torch.cuda.is_available() else "cpu")
     ckpt_path = paths['save_dir'] + "/best.pt"
+    
+    # 학습된 가중치 로드
     net.load_state_dict(torch.load(ckpt_path, map_location=device))
     
     if args['use_cuda']:
         net = net.cuda()
 
-    ds_args = config.get('dataset_args', {})
+    # [수정됨] nbr_feature_mode 전달
     tsSet = ngsimDataset(paths['test_set'],
                         t_h=ds_args.get('t_h', 15),
                         t_f=ds_args.get('t_f', 25),
                         d_s=ds_args.get('d_s', 1),
                         enc_size=args['encoder_size'],
-                        grid_size=tuple(args['grid_size']))
-    tsDataloader = DataLoader(tsSet, batch_size=batch_size, shuffle=True, num_workers=8, collate_fn=tsSet.collate_fn)
+                        grid_size=tuple(args['grid_size']),
+                        nbr_feature_mode=nbr_mode) # <-- 이 부분 추가
+                        
+    tsDataloader = DataLoader(tsSet, batch_size=batch_size, shuffle=False, num_workers=8, collate_fn=tsSet.collate_fn)
 
     if args['use_cuda']:
         nllLoss = nllLoss.cuda()
