@@ -61,6 +61,10 @@ class ngsimDataset(Dataset):
         elif self.nbr_feature_mode == 3: 
             # [실험 3] (lc, dxt)
             sel_nbrs = nbr_data[:, :, 6:8]
+
+        elif self.nbr_feature_mode == 4:
+            # [실험 4] All features (x, y, vx, vy, ax, ay, lc, dxt, gate)
+            sel_nbrs = nbr_data[:, :, 0:9]
             
         else:
             sel_nbrs = nbr_data[:, :, 0:2]

@@ -36,7 +36,8 @@ def main():
         0: 2, # Original (x, y)
         1: 5, # (ax, ay, lc, dxt, gate)
         2: 7, # (x, y, vx, vy, ax, ay, gate)
-        3: 2  # (lc, dxt)
+        3: 2, # (lc, dxt)
+        4: 9  # All features
     }
     current_nbr_dim = mode_dim_map.get(nbr_mode, 2)
     args['nbr_input_dim'] = current_nbr_dim
@@ -81,7 +82,9 @@ def main():
                         nbr_feature_mode=nbr_mode)
     trDataloader = DataLoader(trSet, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True, persistent_workers=True, collate_fn=trSet.collate_fn)
     valDataloader = DataLoader(valSet, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True, persistent_workers=True, collate_fn=valSet.collate_fn)
-
+    print(f"Train : {len(trSet):>10,} samples  ({len(trDataloader):,} batches)")
+    print(f"Val   : {len(valSet):>10,} samples  ({len(valDataloader):,} batches)")
+    
     ## Variables holding train and validation loss values:
     train_loss = []
     val_loss = []

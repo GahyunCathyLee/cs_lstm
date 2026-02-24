@@ -11,7 +11,6 @@ from tqdm import tqdm
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate CS-LSTM model")
     parser.add_argument('--config', type=str, default='config.yaml', help='Path to config file')
-    # [추가] Inference Time 측정 모드 플래그
     parser.add_argument('--measure_time', action='store_true', help='Measure inference time (batch_size=1, 200 iters)')
     args = parser.parse_args()
     with open(args.config, 'r') as f:
@@ -34,7 +33,8 @@ def main():
         0: 2, # Original (x, y)
         1: 5, # Exp1 (ax, ay, lc, dxt, gate)
         2: 7, # Exp2 (x, y, vx, vy, ax, ay, gate)
-        3: 2  # Exp3 (lc, dxt)
+        3: 2,  # Exp3 (lc, dxt)
+        4: 9,  # Exp4 (all features)
     }
     current_nbr_dim = mode_dim_map.get(nbr_mode, 2)
     args['nbr_input_dim'] = current_nbr_dim
@@ -68,8 +68,8 @@ def main():
         # batch_size=1 로 강제 설정
         time_loader = DataLoader(tsSet, batch_size=1, shuffle=True, num_workers=4, collate_fn=tsSet.collate_fn)
         
-        num_iterations = 200
-        warmup_iterations = 20 # GPU 워밍업 (측정에서 제외)
+        num_iterations = 1000
+        warmup_iterations = 100 # GPU 워밍업 (측정에서 제외)
         inference_times = []
         
         with torch.no_grad():
