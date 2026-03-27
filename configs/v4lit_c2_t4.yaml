@@ -2,7 +2,7 @@ model_args:
   use_cuda: True
   encoder_size: 64
   decoder_size: 128
-  in_length: 9
+  in_length: 6
   out_length: 15
   grid_size: [13, 3]
   soc_conv_depth: 64
@@ -14,15 +14,15 @@ model_args:
   use_maneuvers: False
 
 dataset_args:
-  nbr_mode: 5
+  nbr_mode: 6
 
 train_args:
   pretrain_epochs: 30
   train_epochs: 270
   batch_size: 512
+  seed: 0
 
 data_paths:
-  train_set: 'highD/mmap/split_712/train'
-  val_set:   'highD/mmap/split_712/val'
-  test_set:  'highD/mmap/split_712/test'
-  save_dir:  'ckpts/baseline'
+  mmap_dir:  '/home/gahyun/neighformer/data/highD/v4_lit_g2_slot3'
+  split_dir: '/home/gahyun/neighformer/data/highD/splits'
+  save_dir:  'ckpts/v4lit_c2_t4'

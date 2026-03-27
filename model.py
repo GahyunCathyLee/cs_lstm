@@ -78,8 +78,11 @@ class highwayNet(nn.Module):
 
         ## [수정 4] Forward pass nbrs: Neighbor용 Embedding 사용
         # nbrs shape: (T, Total_Nbrs, nbr_input_dim)
-        _, (nbrs_enc, _) = self.enc_lstm(self.leaky_relu(self.ip_emb_nbr(nbrs)))
-        nbrs_enc = nbrs_enc.view(nbrs_enc.shape[1], nbrs_enc.shape[2])
+        if nbrs.shape[1] > 0:
+            _, (nbrs_enc, _) = self.enc_lstm(self.leaky_relu(self.ip_emb_nbr(nbrs)))
+            nbrs_enc = nbrs_enc.view(nbrs_enc.shape[1], nbrs_enc.shape[2])
+        else:
+            nbrs_enc = torch.zeros(0, self.encoder_size, device=nbrs.device)
 
         ## Masked scatter
         soc_enc = torch.zeros_like(masks).float()
@@ -127,7 +130,3 @@ class highwayNet(nn.Module):
         fut_pred = fut_pred.permute(1, 0, 2)
         fut_pred = outputActivation(fut_pred)
         return fut_pred
-
-
-
-

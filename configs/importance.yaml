@@ -14,7 +14,7 @@ model_args:
   use_maneuvers: False
 
 dataset_args:
-  nbr_mode: 5
+  nbr_mode: 6
 
 train_args:
   pretrain_epochs: 30
@@ -25,4 +25,4 @@ data_paths:
   train_set: 'highD/mmap/split_712/train'
   val_set:   'highD/mmap/split_712/val'
   test_set:  'highD/mmap/split_712/test'
-  save_dir:  'ckpts/baseline'
+  save_dir:  'ckpts/importance'

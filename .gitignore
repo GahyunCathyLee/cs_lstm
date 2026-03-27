@@ -1,0 +1,16 @@
+# Data directories
+highD/
+ckpts/
+past_ckpts/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db

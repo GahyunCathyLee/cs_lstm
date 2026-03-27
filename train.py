@@ -1,16 +1,27 @@
 from __future__ import print_function
 import torch
+import random
+import numpy as np
 from model import highwayNet
 from utils import ngsimDataset, maskedNLL, maskedMSE, maskedNLLTest
 from torch.utils.data import DataLoader
 import time
 import math
-import yaml         
-import argparse     
+import yaml
+import argparse
 import os
 from pathlib import Path
 import shutil
 import sys
+
+
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train CS-LSTM model")
@@ -25,23 +36,36 @@ def main():
     config = parse_args()
     
     args = config['model_args']
-    args['train_flag'] = True 
+    args['train_flag'] = True
 
     t_args = config['train_args']
     ds_args = config.get('dataset_args', {})
     paths = config['data_paths']
 
+    seed = t_args.get('seed', None)
+    if seed is not None:
+        set_seed(int(seed))
+        print(f"[Seed] {seed}")
+
     nbr_mode = ds_args.get('nbr_mode', 0)
     mode_dim_map = {
-        0: 2, # Original (x, y)
-        1: 5, # (ax, ay, lc, dxt, gate)
-        2: 7, # (x, y, vx, vy, ax, ay, gate)
-        3: 2, # (lc, dxt)
-        4: 9  # All features
+        0: 2,   # (dx, dy)
+        1: 5,   # (dax, day, lc_state, dx_time, gate)
+        2: 7,   # (dx, dy, dvx, dvy, dax, day, gate)
+        3: 2,   # (lc_state, dx_time)
+        4: 12,  # all 12 dims
+        5: 6,   # (dx, dy, dvx, dvy, dax, day)
+        6: 7,   # (dx, dy, dvx, dvy, dax, day, I)
     }
     current_nbr_dim = mode_dim_map.get(nbr_mode, 2)
     args['nbr_input_dim'] = current_nbr_dim
     print(f"✅ Experiment Mode: {nbr_mode} | Neighbor Input Dim: {current_nbr_dim}")
+
+    # 새 전처리(preprocess.py)는 maneuver 레이블을 생성하지 않는다.
+    if args.get('use_maneuvers', False):
+        print("[WARN] 새 전처리 데이터에는 maneuver 레이블이 없습니다. "
+              "use_maneuvers=False 로 강제합니다.")
+        args['use_maneuvers'] = False
 
     # -----------------------------
     # Save path / directory setup
@@ -66,20 +90,34 @@ def main():
     crossEnt = torch.nn.BCELoss()
 
     ## Initialize data loaders
-    trSet  = ngsimDataset(paths['train_set'],
-                        t_h=ds_args.get('t_h', 15),
-                        t_f=ds_args.get('t_f', 25),
-                        d_s=ds_args.get('d_s', 1),
-                        enc_size=args['encoder_size'],
-                        grid_size=tuple(args['grid_size']),
-                        nbr_feature_mode=nbr_mode)
-    valSet = ngsimDataset(paths['val_set'],
-                        t_h=ds_args.get('t_h', 15),
-                        t_f=ds_args.get('t_f', 25),
-                        d_s=ds_args.get('d_s', 1),
-                        enc_size=args['encoder_size'],
-                        grid_size=tuple(args['grid_size']),
-                        nbr_feature_mode=nbr_mode)
+    # Support two path layouts:
+    #   (A) mmap_dir + split_dir  — neighformer preprocess.py output + split indices
+    #   (B) train_set + val_set   — legacy per-split mmap directories
+    mmap_dir  = paths.get('mmap_dir', None)
+    split_dir = paths.get('split_dir', None)
+
+    if mmap_dir is not None:
+        tr_indices  = None
+        val_indices = None
+        if split_dir is not None:
+            split_dir = Path(split_dir)
+            tr_indices  = np.load(split_dir / 'train_indices.npy')
+            val_indices = np.load(split_dir / 'val_indices.npy')
+        trSet  = ngsimDataset(mmap_dir, enc_size=args['encoder_size'],
+                              grid_size=tuple(args['grid_size']),
+                              nbr_feature_mode=nbr_mode, indices=tr_indices)
+        valSet = ngsimDataset(mmap_dir, enc_size=args['encoder_size'],
+                              grid_size=tuple(args['grid_size']),
+                              nbr_feature_mode=nbr_mode, indices=val_indices)
+    else:
+        trSet  = ngsimDataset(paths['train_set'],
+                              enc_size=args['encoder_size'],
+                              grid_size=tuple(args['grid_size']),
+                              nbr_feature_mode=nbr_mode)
+        valSet = ngsimDataset(paths['val_set'],
+                              enc_size=args['encoder_size'],
+                              grid_size=tuple(args['grid_size']),
+                              nbr_feature_mode=nbr_mode)
     trDataloader = DataLoader(trSet, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True, persistent_workers=True, collate_fn=trSet.collate_fn)
     valDataloader = DataLoader(valSet, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True, persistent_workers=True, collate_fn=valSet.collate_fn)
     print(f"Train : {len(trSet):>10,} samples  ({len(trDataloader):,} batches)")
