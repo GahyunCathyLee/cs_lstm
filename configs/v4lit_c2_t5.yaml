@@ -17,9 +17,9 @@ dataset_args:
   nbr_mode: 6
 
 train_args:
-  pretrain_epochs: 30
-  train_epochs: 270
-  batch_size: 512
+  pretrain_epochs: 20
+  train_epochs: 180
+  batch_size: 1024
   seed: 777
 
 data_paths:
