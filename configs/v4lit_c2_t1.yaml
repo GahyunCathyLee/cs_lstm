@@ -23,6 +23,6 @@ train_args:
   seed: 42
 
 data_paths:
-  mmap_dir:  '/home/gahyun/neighformer/data/highD/v4_lit_g2_slot3'
-  split_dir: '/home/gahyun/neighformer/data/highD/splits'
+  mmap_dir:  'highD/mmap/v4_lit_g2_slot3'
+  split_dir: 'highD/splits'
   save_dir:  'ckpts/v4lit_c2_t1'

@@ -1,5 +1,8 @@
-# Data directories
-highD/
+# Data directories (generated — do not commit)
+highD/raw/
+highD/mmap/
+highD/processed/
+highD/splits/
 ckpts/
 past_ckpts/
 
