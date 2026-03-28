@@ -6,6 +6,8 @@ from torch.utils.data import DataLoader
 import time
 import yaml
 import argparse
+import numpy as np
+from pathlib import Path
 from tqdm import tqdm
 
 def parse_args():
@@ -31,7 +33,7 @@ def main():
         1: 5,   # (dax, day, lc_state, dx_time, gate)
         2: 7,   # (dx, dy, dvx, dvy, dax, day, gate)
         3: 2,   # (lc_state, dx_time)
-        4: 12,  # all 12 dims
+        4: 13,  # all 13 dims
         5: 6,   # (dx, dy, dvx, dvy, dax, day)
         6: 7,   # (dx, dy, dvx, dvy, dax, day, I)
     }
@@ -53,10 +55,25 @@ def main():
     net.eval()
 
     # ── 데이터셋 ──────────────────────────────────────────────────────────
-    tsSet = ngsimDataset(paths['test_set'],
-                         enc_size=args['encoder_size'],
-                         grid_size=tuple(args['grid_size']),
-                         nbr_feature_mode=nbr_mode)
+    # Support two path layouts (same as train.py):
+    #   (A) mmap_dir + split_dir  — shared mmap + split indices
+    #   (B) test_set              — legacy per-split mmap directory
+    mmap_dir  = paths.get('mmap_dir', None)
+    split_dir = paths.get('split_dir', None)
+
+    if mmap_dir is not None:
+        ts_indices = None
+        if split_dir is not None:
+            ts_indices = np.load(Path(split_dir) / 'test_indices.npy')
+        tsSet = ngsimDataset(mmap_dir,
+                             enc_size=args['encoder_size'],
+                             grid_size=tuple(args['grid_size']),
+                             nbr_feature_mode=nbr_mode, indices=ts_indices)
+    else:
+        tsSet = ngsimDataset(paths['test_set'],
+                             enc_size=args['encoder_size'],
+                             grid_size=tuple(args['grid_size']),
+                             nbr_feature_mode=nbr_mode)
     out_length = args['out_length']  # 15
 
     # =====================================================================
