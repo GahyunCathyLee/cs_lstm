@@ -56,6 +56,7 @@ class ngsimDataset(Dataset):
         4 → all 13 dims
         5 → (dx, dy, dvx, dvy, dax, day)          dim=6  [c0]
         6 → (dx, dy, dvx, dvy, dax, day, I_y)     dim=7  [c2]
+        7 → (dx, dy, dvx, dvy, dax, day, I)     dim=7  [c1]
     """
 
     def __init__(self, mmap_dir, t_h=None, t_f=None, d_s=None,
@@ -110,6 +111,9 @@ class ngsimDataset(Dataset):
         elif self.nbr_feature_mode == 6:
             # c2: (dx, dy, dvx, dvy, dax, day, I_y)  — idx 11 = I_y
             nbr_feat = nbr_raw[:, :, [0, 1, 2, 3, 4, 5, 11]]
+        elif self.nbr_feature_mode == 7:
+            # c2: (dx, dy, dvx, dvy, dax, day, I)
+            nbr_feat = nbr_raw[:, :, [0, 1, 2, 3, 4, 5, 12]]
         else:
             nbr_feat = nbr_raw[:, :, 0:2]
 

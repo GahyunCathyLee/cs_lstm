@@ -56,6 +56,7 @@ def main():
         4: 13,  # all 13 dims
         5: 6,   # (dx, dy, dvx, dvy, dax, day)
         6: 7,   # (dx, dy, dvx, dvy, dax, day, I)
+        7: 7,
     }
     current_nbr_dim = mode_dim_map.get(nbr_mode, 2)
     args['nbr_input_dim'] = current_nbr_dim
