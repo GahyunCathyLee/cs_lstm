@@ -804,7 +804,7 @@ def parse_args() -> Config:
         description="HighD preprocessing pipeline  (raw CSV -> mmap)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    ap.add_argument("--data_dir",    default="data/highD", help="Base data directory")
+    ap.add_argument("--data_dir",    default="highD", help="Base data directory")
     ap.add_argument("--raw_dir",     default="raw",        help="Raw CSV subdir under data_dir")
     ap.add_argument("--mmap_dir",    default="mmap",       help="Mmap output subdir under data_dir")
     ap.add_argument("--num_workers", type=int, default=0,  help="Worker processes (0 = os.cpu_count())")
