@@ -14,7 +14,7 @@ model_args:
   use_maneuvers: False
 
 dataset_args:
-  nbr_mode: 5
+  nbr_mode: 7
 
 train_args:
   pretrain_epochs: 20

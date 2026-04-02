@@ -57,6 +57,7 @@ def main():
         5: 6,   # (dx, dy, dvx, dvy, dax, day)
         6: 7,   # (dx, dy, dvx, dvy, dax, day, I)
         7: 7,
+        8: 8,   # (dx, dy, dvx, dvy, dax, day, lis, I_y)
     }
     current_nbr_dim = mode_dim_map.get(nbr_mode, 2)
     args['nbr_input_dim'] = current_nbr_dim
@@ -119,8 +120,8 @@ def main():
                               enc_size=args['encoder_size'],
                               grid_size=tuple(args['grid_size']),
                               nbr_feature_mode=nbr_mode)
-    trDataloader = DataLoader(trSet, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True, persistent_workers=True, collate_fn=trSet.collate_fn)
-    valDataloader = DataLoader(valSet, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True, persistent_workers=True, collate_fn=valSet.collate_fn)
+    trDataloader = DataLoader(trSet, batch_size=batch_size, shuffle=True, num_workers=64, pin_memory=True, persistent_workers=True, collate_fn=trSet.collate_fn)
+    valDataloader = DataLoader(valSet, batch_size=batch_size, shuffle=True, num_workers=64, pin_memory=True, persistent_workers=True, collate_fn=valSet.collate_fn)
     print(f"Train : {len(trSet):>10,} samples  ({len(trDataloader):,} batches)")
     print(f"Val   : {len(valSet):>10,} samples  ({len(valDataloader):,} batches)")
     
