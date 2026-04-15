@@ -117,6 +117,56 @@ _TOPN_SLOT_PRIORITY = {s: r for r, s in enumerate([0, 2, 5, 1, 4, 7, 3, 6])}
 #        rightPreceding, rightAlongside, rightFollowing
 SLOT_WEIGHTS = [0.4944, 0.0411, 0.0935, 0.0074, 0.0002, 0.5559, 0.0000, 0.1179]
 
+# Conditional slot weights derived from SlotWeightProbe models (mean softmax per slot).
+# Used when Config.slot_importance_conditional = True.
+
+# No-LC case: weights by ego lane level  (0=leftmost/fast, 1=middle, 2=rightmost/slow)
+SLOT_WEIGHTS_BY_LANE_LEVEL = [
+    [0.4255, 0.0336, 0.0000, 0.0000, 0.0000, 0.4574, 0.0119, 0.1190],  # ll0 leftmost
+    [0.4805, 0.0002, 0.0000, 0.0000, 0.0000, 0.3803, 0.0234, 0.1839],  # ll1 middle
+    [0.4784, 0.0373, 0.3344, 0.0343, 0.2050, 0.0000, 0.0000, 0.0000],  # ll2 rightmost
+]
+
+# LC-in-history case: pre-LC weights per LC group (G0-G3)
+# Order: preceding, following, leftPreceding, leftAlongside, leftFollowing,
+#        rightPreceding, rightAlongside, rightFollowing
+# G0: leftmost→right  (lct0 leftmost→middle,    lct1 leftmost→rightmost)
+# G1: middle→right    (lct3 middle→rightmost,    lct6 middle→middle(right))
+# G2: middle→left     (lct2 middle→leftmost,     lct7 middle→middle(left))
+# G3: rightmost→left  (lct4 rightmost→leftmost,  lct5 rightmost→middle)
+SLOT_WEIGHTS_PRE_LC = [
+    [0.0001, 0.0000, 0.0000, 0.0000, 0.0000, 0.6253, 0.2663, 0.3117],  # G0 leftmost→right
+    [0.0072, 0.0263, 0.0006, 0.0000, 0.0000, 0.3970, 0.3776, 0.5494],  # G1 middle→right
+    [0.0183, 0.1326, 0.6745, 0.5179, 0.2365, 0.0000, 0.0000, 0.0000],  # G2 middle→left
+    [0.0381, 0.0233, 0.5755, 0.3548, 0.4799, 0.0000, 0.0000, 0.0000],  # G3 rightmost→left
+]
+
+# LC-in-history case: post-LC weights per LC group (G0-G3)
+SLOT_WEIGHTS_POST_LC = [
+    [0.0460, 0.3983, 0.0000, 0.0023, 0.0762, 0.2338, 0.2022, 0.3281],  # G0 leftmost→right
+    [0.1036, 0.0851, 0.4832, 0.0540, 0.3810, 0.0013, 0.0000, 0.0002],  # G1 middle→right
+    [0.6018, 0.3591, 0.0115, 0.0013, 0.0099, 0.1709, 0.0069, 0.0014],  # G2 middle→left
+    [0.2618, 0.0000, 0.0036, 0.0000, 0.0000, 0.6545, 0.2032, 0.1449],  # G3 rightmost→left
+]
+
+# lc_type → LC group index  (G0=0, G1=1, G2=2, G3=3)
+# lc_type: 0=leftmost→middle, 1=leftmost→rightmost, 2=middle→leftmost,
+#           3=middle→rightmost, 4=rightmost→leftmost, 5=rightmost→middle,
+#           6=middle→middle(right), 7=middle→middle(left)
+_LC_TYPE_TO_GROUP: Dict[int, int] = {
+    0: 0, 1: 0,  # G0 leftmost→right
+    3: 1, 6: 1,  # G1 middle→right
+    2: 2, 7: 2,  # G2 middle→left
+    4: 3, 5: 3,  # G3 rightmost→left
+}
+
+# (from_level, to_level) → lc_type
+_LC_TYPE_MAP_LEVEL: Dict[Tuple[int, int], int] = {
+    (0, 1): 0, (0, 2): 1,
+    (1, 0): 2, (1, 2): 3,
+    (2, 0): 4, (2, 1): 5,
+}
+
 
 def _apply_topn_gate(nb_row: np.ndarray, mask_row: np.ndarray, n: int) -> None:
     """Select top-n slots by I (idx 12) and zero-gate the rest (in-place).
@@ -188,6 +238,76 @@ def _volume_bin(phys_length: float, phys_width: float, vehicle_class: str) -> Tu
 def _lit_to_lis(lit: float, lis_mode: str) -> float:
     cfg = LIS_BINS[lis_mode]
     return cfg['vals'][bisect.bisect_right(cfg['cuts'], lit)]
+
+
+def _lane_id_to_level(lid: int, dd: int, sorted_lids: List[int], post_flip: bool) -> int:
+    """lane_id → lane_level (0=leftmost/fast, 1=middle, 2=rightmost/slow)."""
+    n = len(sorted_lids)
+    if n == 0 or lid not in sorted_lids:
+        return -1
+    idx = sorted_lids.index(lid)
+    if n == 1:
+        return 1
+    if post_flip or dd == 2:
+        if idx == 0:     return 0  # leftmost
+        if idx == n - 1: return 2  # rightmost
+        return 1
+    else:  # dd=1, no flip
+        if idx == 0:     return 2  # rightmost
+        if idx == n - 1: return 0  # leftmost
+        return 1
+
+
+def _ego_lc_context(
+    ego_lane_arr: np.ndarray,
+    dd: int,
+    lane_ids_per_dd: Dict[int, List[int]],
+    post_flip: bool,
+) -> Tuple[int, Optional[int], int]:
+    """history window 내 ego LC 상태를 판단한다.
+
+    Returns (lane_level, lc_frame_ti, lc_type)
+      lane_level  : 0/1/2 (no-LC, ego의 t0 차선), -2 (LC in history), -1 (unknown)
+      lc_frame_ti : LC가 처음 일어난 hist frame 인덱스 (None = no LC)
+      lc_type     : 0-5  (-1 = no LC or unknown)
+    """
+    sorted_lids = lane_ids_per_dd.get(dd, [])
+    lc_frame_ti: Optional[int] = None
+    lc_type = -1
+    for ti in range(1, len(ego_lane_arr)):
+        if ego_lane_arr[ti] != ego_lane_arr[ti - 1]:
+            lc_frame_ti = ti
+            from_lvl = _lane_id_to_level(int(ego_lane_arr[ti - 1]), dd, sorted_lids, post_flip)
+            to_lvl   = _lane_id_to_level(int(ego_lane_arr[ti]),     dd, sorted_lids, post_flip)
+            lc_type  = _LC_TYPE_MAP_LEVEL.get((from_lvl, to_lvl), -1)
+            break
+    if lc_frame_ti is None:
+        lane_level = _lane_id_to_level(int(ego_lane_arr[-1]), dd, sorted_lids, post_flip)
+    else:
+        lane_level = -2
+    return lane_level, lc_frame_ti, lc_type
+
+
+def _get_slot_weight(
+    ki: int,
+    ti: int,
+    lane_level: int,
+    lc_frame_ti: Optional[int],
+    lc_type: int,
+) -> float:
+    """slot ki / timestep ti에 대응하는 조건부 slot weight를 반환."""
+    if lc_frame_ti is not None and lc_type >= 0:
+        lc_group = _LC_TYPE_TO_GROUP.get(lc_type, -1)
+        if lc_group < 0:
+            return SLOT_WEIGHTS[ki]  # unknown lc_type fallback
+        if ti < lc_frame_ti:
+            return SLOT_WEIGHTS_PRE_LC[lc_group][ki]
+        else:
+            return SLOT_WEIGHTS_POST_LC[lc_group][ki]
+    elif 0 <= lane_level <= 2:
+        return SLOT_WEIGHTS_BY_LANE_LEVEL[lane_level][ki]
+    else:
+        return SLOT_WEIGHTS[ki]  # fallback
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -265,6 +385,7 @@ class Config:
 
     # slot importance: I_new = min(I * (1 + alpha * w_slot), 1.0);  0.0 = disabled
     slot_importance_alpha: float = 0.0
+    slot_importance_conditional: bool = False  # True → lane-level/pre-LC/post-LC weights
 
     # lc_state version
     lc_version: str = "v3"           # "v1" (slot-based) | "v2" (dy-sign-based) | "v3" (latV+lco-based) | "v4" (lco_norm-based)
@@ -507,6 +628,13 @@ def _recording_to_buf(cfg: Config, rec_id: str) -> Optional[Dict[str, np.ndarray
         if np.any(chg):
             lane_change[idxs[1:][chg]] = 1.0
 
+    # ── per-dd sorted lane IDs (conditional slot weights 용) ─────────────────
+    lane_ids_per_dd_rec: Dict[int, List[int]] = {}
+    if cfg.slot_importance_conditional:
+        for dd_val in [1, 2]:
+            lids = sorted(set(int(x) for x in lane_id[dd == dd_val] if x > 0))
+            lane_ids_per_dd_rec[dd_val] = lids
+
     nb_ids_all = np.stack(
         [tracks[c].astype(np.int32).to_numpy() for c in NEIGHBOR_COLS_8], axis=1
     )
@@ -549,6 +677,16 @@ def _recording_to_buf(cfg: Config, rec_id: str) -> Optional[Dict[str, np.ndarray
             exa = xa[ego_rows]; eya = ya[ego_rows]
 
             ego_lane_arr = lane_id[ego_rows].astype(np.int32)
+
+            # ── conditional slot weight context (computed once per sample) ────
+            _lc_lane_lv: int            = -1
+            _lc_frame_ti: Optional[int] = None
+            _lc_type: int               = -1
+            if cfg.slot_importance_conditional and cfg.slot_importance_alpha > 0.0:
+                ego_dd = vid_to_dd.get(v, 2)
+                _lc_lane_lv, _lc_frame_ti, _lc_type = _ego_lc_context(
+                    ego_lane_arr, ego_dd, lane_ids_per_dd_rec, cfg.normalize_upper_xy
+                )
 
             # ── ego-centric normalisation: last history frame as origin ───────
             ref_x = float(ex[-1])
@@ -686,8 +824,12 @@ def _recording_to_buf(cfg: Config, rec_id: str) -> Optional[Dict[str, np.ndarray
 
                     # ── slot importance boost: I_new = I * (1 + alpha * w_slot) ──
                     if cfg.slot_importance_alpha > 0.0:
+                        if cfg.slot_importance_conditional:
+                            w_slot = _get_slot_weight(ki, ti, _lc_lane_lv, _lc_frame_ti, _lc_type)
+                        else:
+                            w_slot = SLOT_WEIGHTS[ki]
                         i_total = min(
-                            i_total * (1.0 + cfg.slot_importance_alpha * SLOT_WEIGHTS[ki]),
+                            i_total * (1.0 + cfg.slot_importance_alpha * w_slot),
                             1.0,
                         )
 
@@ -766,7 +908,8 @@ def stage_raw2mmap(cfg: Config) -> None:
           + (f"  lis_mode : {cfg.lis_mode}" if cfg.importance_mode == 'lis' else
              f"  params   : {IMPORTANCE_PARAMS_LIT}"))
     if cfg.slot_importance_alpha > 0.0:
-        print(f"  slotImportance  : alpha={cfg.slot_importance_alpha}  "
+        cond_str = "conditional (lane-level / pre-LC / post-LC)" if cfg.slot_importance_conditional else "global SLOT_WEIGHTS"
+        print(f"  slotImportance  : alpha={cfg.slot_importance_alpha}  weights={cond_str}  "
               f"I_new = min(I * (1 + {cfg.slot_importance_alpha} * w_slot), 1.0)")
     if cfg.gate_mask:
         print(f"  gate_mask       : enabled  (gate=0 neighbors removed from nb_mask)")
@@ -903,6 +1046,10 @@ def parse_args() -> Config:
                     dest="slot_importance_alpha",
                     help="Slot importance boost alpha: I_new = min(I * (1 + alpha * w_slot), 1.0). "
                          "w_slot = empirical mean I per slot. 0.0 = disabled (default)")
+    ap.add_argument("--slotImportanceConditional", action="store_true", default=False,
+                    dest="slot_importance_conditional",
+                    help="Use lane-level/pre-LC/post-LC conditional slot weights "
+                         "(requires --slotImportance > 0)")
     ap.add_argument("--lc_version", default="v3", choices=["v1", "v2", "v3", "v4"],
                     help="lc_state 계산 방식: "
                          "v1=slot기반 절대yV (tf_trajPred 방식, 값범주 {-3,-2,-1,0,1,2,3}), "
@@ -939,7 +1086,8 @@ def parse_args() -> Config:
         gate_theta      = a.gate_theta,
         gate_topn       = a.gate_topn,
         gate_mask       = a.gate_mask,
-        slot_importance_alpha = a.slot_importance_alpha,
+        slot_importance_alpha       = a.slot_importance_alpha,
+        slot_importance_conditional = a.slot_importance_conditional,
         lc_version    = a.lc_version,
         non_relative = a.non_relative,
         dry_run     = a.dry_run,

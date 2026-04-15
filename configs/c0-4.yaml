@@ -20,9 +20,9 @@ train_args:
   pretrain_epochs: 20
   train_epochs: 180
   batch_size: 1024
-  seed: 1234
+  seed: 0
 
 data_paths:
-  mmap_dir:  'highD/mmap/v4_lit_g2_slot3'
+  mmap_dir:  'highD/mmap/v4_7_g2'
   split_dir: 'highD/splits'
-  save_dir:  'ckpts/v4lit_c0_t2'
+  save_dir:  'ckpts/c0-4'

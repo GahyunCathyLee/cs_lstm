@@ -14,7 +14,7 @@ model_args:
   use_maneuvers: False
 
 dataset_args:
-  nbr_mode: 6
+  nbr_mode: 5
 
 train_args:
   pretrain_epochs: 20
@@ -23,6 +23,6 @@ train_args:
   seed: 42
 
 data_paths:
-  mmap_dir:  'highD/mmap/v4_lit_g2_slot3'
+  mmap_dir:  'highD/mmap/v4_7_g2'
   split_dir: 'highD/splits'
-  save_dir:  'ckpts/v4lit_c2_t1'
+  save_dir:  'ckpts/c0-1'

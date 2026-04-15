@@ -590,7 +590,7 @@ def parse_args() -> argparse.Namespace:
         description="highD window-level scenario labeling",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    ap.add_argument("--data_dir",     default="data/highD",          help="Base data directory")
+    ap.add_argument("--data_dir",     default="highD",          help="Base data directory")
     ap.add_argument("--raw_dir",      default="raw",                 help="Raw CSV subdir under data_dir")
     ap.add_argument("--mmap_dir",     default="mmap",                help="Mmap subdir under data_dir (leave empty for standalone mode)")
     ap.add_argument("--out_csv",      default="scenario_labels.csv", help="Output CSV filename (saved inside mmap_dir)")
