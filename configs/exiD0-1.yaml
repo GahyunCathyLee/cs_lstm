@@ -1,0 +1,28 @@
+model_args:
+  use_cuda: True
+  encoder_size: 64
+  decoder_size: 128
+  in_length: 6
+  out_length: 15
+  grid_size: [13, 3]
+  soc_conv_depth: 64
+  conv_3x1_depth: 16
+  dyn_embedding_size: 32
+  input_embedding_size: 32
+  num_lat_classes: 3
+  num_lon_classes: 2
+  use_maneuvers: False
+
+dataset_args:
+  nbr_mode: 5
+
+train_args:
+  pretrain_epochs: 20
+  train_epochs: 180
+  batch_size: 1024
+  seed: 42
+
+data_paths:
+  mmap_dir:  'exiD/c7'
+  split_dir: 'exiD/splits'
+  save_dir:  'ckpts/exiD0-1'

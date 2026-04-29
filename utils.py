@@ -44,20 +44,19 @@ class ngsimDataset(Dataset):
     새 전처리(preprocess.py)가 생성한 mmap 파일을 읽어
     기존 model.py(CS-LSTM)가 기대하는 포맷으로 변환한다.
 
-    x_nb 특징 인덱스 (neighformer preprocess.py 스키마, 13 dims):
-        0 dx   1 dy   2 dvx   3 dvy   4 dax   5 day
-        6 lc_state   7 lit   8 lis   9 gate   10 I_x   11 I_y   12 I
+    x_nb 특징 인덱스 (neighformer preprocess.py 스키마, 10 dims):
+        0 dx   1 dy   2 dvx   3 dvy   4 dax   5 day   6 s_x   7 s_y   8 dim   9 I
 
     nbr_feature_mode:
         0 → (dx, dy)                              dim=2  [baseline]
-        1 → (dax, day, lc_state, dx_time, gate)   dim=5
-        2 → (dx, dy, dvx, dvy, dax, day, gate)    dim=7
-        3 → (lc_state, dx_time)                   dim=2
-        4 → all 13 dims
+        1 → (dax, day, s_x, s_y, I)               dim=5
+        2 → (dx, dy, dvx, dvy, dax, day, I)       dim=7
+        3 → (s_x, s_y)                            dim=2
+        4 → all 10 dims
         5 → (dx, dy, dvx, dvy, dax, day)          dim=6  [c0]
-        6 → (dx, dy, dvx, dvy, dax, day, I_y)     dim=7  [c2]
-        7 → (dx, dy, dvx, dvy, dax, day, I)       dim=7  [c1]
-        8 → (dx, dy, dvx, dvy, dax, day, lis, I_y)     dim=8  [c3]
+        6 → (dx, dy, dvx, dvy, dax, day, I)       dim=7
+        7 → (dx, dy, dvx, dvy, dax, day, I)       dim=7
+        8 → (dx, dy, dvx, dvy, dax, day, dim, I)  dim=8  [dimI]
     """
 
     def __init__(self, mmap_dir, t_h=None, t_f=None, d_s=None,
@@ -67,7 +66,7 @@ class ngsimDataset(Dataset):
 
         self.x_ego   = np.load(mmap_dir / "x_ego.npy",   mmap_mode='r')  # (N, T, 6)
         self.y       = np.load(mmap_dir / "y.npy",       mmap_mode='r')  # (N, Tf, 2)
-        self.x_nb    = np.load(mmap_dir / "x_nb.npy",    mmap_mode='r')  # (N, T, 8, 13)
+        self.x_nb    = np.load(mmap_dir / "x_nb.npy",    mmap_mode='r')  # (N, T, 8, 10)
         self.nb_mask = np.load(mmap_dir / "nb_mask.npy", mmap_mode='r')  # (N, T, 8) bool
 
         self.nbr_feature_mode = nbr_feature_mode
@@ -93,31 +92,31 @@ class ngsimDataset(Dataset):
         fut = torch.from_numpy(self.y[idx].copy()).float()
 
         # neighbors: feature 선택 후 (T, 8, D)
-        nbr_raw = self.x_nb[idx]    # (T, 8, 13)
+        nbr_raw = self.x_nb[idx]    # (T, 8, 10)
         nb_mask = self.nb_mask[idx] # (T, 8) bool
 
         if self.nbr_feature_mode == 0:
             nbr_feat = nbr_raw[:, :, 0:2]
         elif self.nbr_feature_mode == 1:
-            nbr_feat = nbr_raw[:, :, 4:9]
+            nbr_feat = nbr_raw[:, :, [4, 5, 6, 7, 9]]
         elif self.nbr_feature_mode == 2:
-            nbr_feat = nbr_raw[:, :, [0, 1, 2, 3, 4, 5, 8]]
+            nbr_feat = nbr_raw[:, :, [0, 1, 2, 3, 4, 5, 9]]
         elif self.nbr_feature_mode == 3:
             nbr_feat = nbr_raw[:, :, 6:8]
         elif self.nbr_feature_mode == 4:
-            nbr_feat = nbr_raw[:, :, 0:13]
+            nbr_feat = nbr_raw[:, :, 0:10]
         elif self.nbr_feature_mode == 5:
             # c0: (dx, dy, dvx, dvy, dax, day)
             nbr_feat = nbr_raw[:, :, 0:6]
         elif self.nbr_feature_mode == 6:
-            # c2: (dx, dy, dvx, dvy, dax, day, I_y)  — idx 11 = I_y
-            nbr_feat = nbr_raw[:, :, [0, 1, 2, 3, 4, 5, 11]]
+            # mode 6: (dx, dy, dvx, dvy, dax, day, I) — idx 9 = I
+            nbr_feat = nbr_raw[:, :, [0, 1, 2, 3, 4, 5, 9]]
         elif self.nbr_feature_mode == 7:
             # c2: (dx, dy, dvx, dvy, dax, day, I)
-            nbr_feat = nbr_raw[:, :, [0, 1, 2, 3, 4, 5, 12]]
+            nbr_feat = nbr_raw[:, :, [0, 1, 2, 3, 4, 5, 9]]
         elif self.nbr_feature_mode == 8:
-            # c3: (dx, dy, dvx, dvy, dax, day, lis, I_y)
-            nbr_feat = nbr_raw[:, :, [0, 1, 2, 3, 4, 5, 8, 11]]
+            # mode 8: (dx, dy, dvx, dvy, dax, day, dim, I)
+            nbr_feat = nbr_raw[:, :, [0, 1, 2, 3, 4, 5, 8, 9]]
         else:
             nbr_feat = nbr_raw[:, :, 0:2]
 

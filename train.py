@@ -50,14 +50,14 @@ def main():
     nbr_mode = ds_args.get('nbr_mode', 0)
     mode_dim_map = {
         0: 2,   # (dx, dy)
-        1: 5,   # (dax, day, lc_state, dx_time, gate)
+        1: 5,   # (dax, day, s_x, s_y, I)
         2: 7,   # (dx, dy, dvx, dvy, dax, day, gate)
-        3: 2,   # (lc_state, dx_time)
-        4: 13,  # all 13 dims
+        3: 2,   # (s_x, s_y)
+        4: 10,  # all 10 dims
         5: 6,   # (dx, dy, dvx, dvy, dax, day)
         6: 7,   # (dx, dy, dvx, dvy, dax, day, I)
         7: 7,
-        8: 8,   # (dx, dy, dvx, dvy, dax, day, lis, I_y)
+        8: 8,   # (dx, dy, dvx, dvy, dax, day, dim, I)
     }
     current_nbr_dim = mode_dim_map.get(nbr_mode, 2)
     args['nbr_input_dim'] = current_nbr_dim
