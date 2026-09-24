@@ -17,12 +17,12 @@ dataset_args:
   nbr_mode: 8
 
 train_args:
-  pretrain_epochs: 20
-  train_epochs: 180
+  pretrain_epochs: 100
+  train_epochs: 400
   batch_size: 1024
   seed: 3407
 
 data_paths:
-  mmap_dir:  'highD/dimI'
-  split_dir: 'highD/splits'
+  mmap_dir:  'data/highD/dimI'
+  split_dir: 'data/highD/splits'
   save_dir:  'ckpts/highD1-3'
