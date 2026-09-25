@@ -144,16 +144,26 @@ def parse_args():
                         help='Warmup iterations for --measure_time')
     parser.add_argument('--latency_iters', type=int, default=1000,
                         help='Measurement iterations for --measure_time')
+    parser.add_argument('--mmap_dir', type=str, default=None,
+                        help='Override data_paths.mmap_dir from config')
+    parser.add_argument('--split_dir', type=str, default=None,
+                        help='Override data_paths.split_dir from config')
+    parser.add_argument('--ckpt', type=str, default=None,
+                        help='Override checkpoint path; defaults to data_paths.save_dir/best.pt')
     parser.add_argument('--scenario_labels', type=str, default=None,
                         help='Path to scenario_labels.csv for per-scenario breakdown')
     args = parser.parse_args()
     with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
-    return config, args.measure_time, args.scenario_labels, args.latency_warmup, args.latency_iters
+    if args.mmap_dir is not None:
+        config.setdefault('data_paths', {})['mmap_dir'] = args.mmap_dir
+    if args.split_dir is not None:
+        config.setdefault('data_paths', {})['split_dir'] = args.split_dir
+    return config, args.measure_time, args.scenario_labels, args.latency_warmup, args.latency_iters, args.ckpt
 
 
 def main():
-    config, measure_time_mode, scenario_labels_arg, latency_warmup, latency_iters = parse_args()
+    config, measure_time_mode, scenario_labels_arg, latency_warmup, latency_iters, ckpt_override = parse_args()
     args = config['model_args']
     args['train_flag'] = False
 
@@ -184,7 +194,7 @@ def main():
     # ── 모델 로드 ─────────────────────────────────────────────────────────
     net = highwayNet(args)
     device = torch.device("cuda" if args['use_cuda'] and torch.cuda.is_available() else "cpu")
-    ckpt_path = paths['save_dir'] + "/best.pt"
+    ckpt_path = ckpt_override if ckpt_override is not None else paths['save_dir'] + "/best.pt"
     net.load_state_dict(torch.load(ckpt_path, map_location=device))
     net = net.to(device)
     net.eval()
