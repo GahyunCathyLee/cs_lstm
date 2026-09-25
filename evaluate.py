@@ -140,16 +140,20 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate CS-LSTM model")
     parser.add_argument('--config', type=str, default='config.yaml', help='Path to config file')
     parser.add_argument('--measure_time', action='store_true', help='Measure inference time (batch_size=1, 1000 iters)')
+    parser.add_argument('--latency_warmup', type=int, default=100,
+                        help='Warmup iterations for --measure_time')
+    parser.add_argument('--latency_iters', type=int, default=1000,
+                        help='Measurement iterations for --measure_time')
     parser.add_argument('--scenario_labels', type=str, default=None,
                         help='Path to scenario_labels.csv for per-scenario breakdown')
     args = parser.parse_args()
     with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
-    return config, args.measure_time, args.scenario_labels
+    return config, args.measure_time, args.scenario_labels, args.latency_warmup, args.latency_iters
 
 
 def main():
-    config, measure_time_mode, scenario_labels_arg = parse_args()
+    config, measure_time_mode, scenario_labels_arg, latency_warmup, latency_iters = parse_args()
     args = config['model_args']
     args['train_flag'] = False
 
@@ -224,13 +228,11 @@ def main():
         time_loader = DataLoader(tsSet, batch_size=1, shuffle=True,
                                  num_workers=4, collate_fn=tsSet.collate_fn)
 
-        num_iterations  = 1000
-        warmup_iterations = 100
         inference_times = []
 
         with torch.no_grad():
             for i, data in enumerate(time_loader):
-                if i >= num_iterations + warmup_iterations:
+                if i >= latency_iters + latency_warmup:
                     break
                 hist, nbrs, mask, lat_enc, lon_enc, fut, op_mask = data
                 hist    = hist.to(device)
@@ -249,13 +251,16 @@ def main():
                     torch.cuda.synchronize()
                 end_time = time.perf_counter()
 
-                if i >= warmup_iterations:
+                if i >= latency_warmup:
                     inference_times.append((end_time - start_time) * 1000)
 
         avg_time = sum(inference_times) / len(inference_times)
-        print(f"✅ Result ({num_iterations} iterations):")
-        print(f"  - Average Inference Time: {avg_time:.2f} ms")
-        print(f"  - Min / Max Time: {min(inference_times):.2f} ms / {max(inference_times):.2f} ms\n")
+        min_time = min(inference_times)
+        max_time = max(inference_times)
+        print(f"✅ Result (warmup={latency_warmup}, iterations={latency_iters}):")
+        print(f"  - Min Latency: {min_time:.2f} ms")
+        print(f"  - Max Latency: {max_time:.2f} ms")
+        print(f"  - Avg Latency: {avg_time:.2f} ms\n")
         return
 
     # =====================================================================
